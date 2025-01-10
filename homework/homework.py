@@ -98,7 +98,7 @@ import gzip
 import zipfile
 import json
 import pandas as pd
-import joblib
+import pickle
 
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
@@ -106,6 +106,7 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.metrics import precision_score, balanced_accuracy_score, recall_score, f1_score, confusion_matrix
 
+METRICS_PATH = 'files/output/metrics.json'
 
 def load_data():
     with zipfile.ZipFile('files/input/train_data.csv.zip') as z:
@@ -176,32 +177,74 @@ def save_model(grid):
     print(f"Saving model to {model_path}")
     assert os.path.exists(model_dir), f"Directory {model_dir} does not exist"
 
-    with gzip.open(model_path, 'wb') as f:
-        joblib.dump(grid.best_estimator_, f)
+    # Save the model to a compressed file
+    with gzip.open(model_path, 'wb') as file:
+        # save with pickle
+        pickle.dump(grid, file)
+        #joblib.dump(grid, file)
 
 
-def save_metrics(grid, x_train, y_train, x_test, y_test):
+def write_json_file(file_path, data):
     # Ensure the directory exists
     metrics_dir = 'files/output'
     os.makedirs(metrics_dir, exist_ok=True)
-    metrics_path = os.path.join(metrics_dir, 'metrics.json')
+    # write to file
+    with open(file_path, 'w') as file:
+        # write to file
+        for entry in data:
+            json_line = json.dumps(entry)
+            file.write(json_line + '\n')
+    
+    print(f"Metrics saved to {METRICS_PATH}")
+
+def get_metrics(grid, x_train, y_train, x_test, y_test):
+    dict_template = {
+        'dataset': None,
+        'precision': None,
+        'balanced_accuracy': None,
+        'recall': None,
+        'f1_score': None
+    }
+
+    train_template = dict_template.copy()
+    test_template = dict_template.copy()
 
     # Calculate metrics
     train_score = grid.score(x_train, y_train)
     test_score = grid.score(x_test, y_test)
-    metrics = {
-        'train_score': train_score,
-        'test_score': test_score,
-        'best_params': grid.best_params_
-    }
 
-    # Save metrics to JSON file
-    with open(metrics_path, 'w') as f:
-        json.dump(metrics, f, indent=4)
+    # Fill in the template for train metrics
+    train_template['dataset'] = 'train'
+    train_template['precision'] = train_score
+    train_template['balanced_accuracy'] = balanced_accuracy_score(y_train, grid.predict(x_train))
+    train_template['recall'] = recall_score(y_train, grid.predict(x_train))
+    train_template['f1_score'] = f1_score(y_train, grid.predict(x_train))
 
+    # Fill in the template for test metrics
+    test_template['dataset'] = 'test'
+    test_template['precision'] = test_score
+    test_template['balanced_accuracy'] = balanced_accuracy_score(y_test, grid.predict(x_test))
+    test_template['recall'] = recall_score(y_test, grid.predict(x_test))
+    test_template['f1_score'] = f1_score(y_test, grid.predict(x_test))
 
-def save_confusion_matrix(grid, x_train, y_train, x_test, y_test):
+    # Add metrics to JSON file line
+    # Read existing metrics if the file exists
+    #if os.path.exists(METRICS_PATH):
+    #   pass 
+    #else:
+    #    # create it
+    #    with open(METRICS_PATH, 'w', encoding="utf-8") as f:
+    #        json.dump([], f, indent=4)
+        
+    metrics = []
+    # Append new metrics
+    metrics.append(train_template)
+    metrics.append(test_template)
 
+    return metrics
+
+def get_confusion_matrix(grid, x_train, y_train, x_test, y_test):
+    
     cm_train = confusion_matrix(y_train, grid.predict(x_train))
     cm_test = confusion_matrix(y_test, grid.predict(x_test))
 
@@ -209,6 +252,8 @@ def save_confusion_matrix(grid, x_train, y_train, x_test, y_test):
     cm_train = cm_train.tolist()
     cm_test = cm_test.tolist()
 
+    # {'type': 'cm_matrix', 'dataset': 'train', 'true_0': {"predicted_0": 15562, "predicte_1": 666}, 'true_1': {"predicted_0": 3333, "predicted_1": 1444}}
+    
     # train metrics
     train_metrics = {
         'type': 'cm_matrix',
@@ -237,23 +282,16 @@ def save_confusion_matrix(grid, x_train, y_train, x_test, y_test):
             'predicted_1': cm_test[1][1]
         }
     }
+
+
+
     # Combine train and test metrics
-    metrics = {
-        'train_metrics': train_metrics,
-        'test_metrics': test_metrics
-    }
+    metrics = [
+        train_metrics,
+        test_metrics
+    ]
 
-    # Ensure the directory exists
-    metrics_dir = 'files/output'
-    os.makedirs(metrics_dir, exist_ok=True)
-    metrics_path = os.path.join(metrics_dir, 'metrics.json')
-
-    # Save metrics to JSON file
-    with open(metrics_path, 'w') as f:
-        json.dump(metrics, f, indent=4)
-
-    # Debugging statement to verify the file path
-    print(f"Metrics saved to {metrics_path}")
+    return metrics
 
 
 
@@ -271,9 +309,13 @@ def main():
     # Paso 5
     save_model(grid)
     # Paso 6
-    save_metrics(grid, x_train, y_train, x_test, y_test)
+    metrics = get_metrics(grid, x_train, y_train, x_test, y_test)
     # Paso 7
-    save_confusion_matrix(grid, x_train, y_train, x_test, y_test)
+    cm_metrics = get_confusion_matrix(grid, x_train, y_train, x_test, y_test)
+
+    # Save metrics to JSON file
+    existing_metrics = metrics + cm_metrics
+    write_json_file(METRICS_PATH, existing_metrics)
 
     print('Proceso finalizado')
 
