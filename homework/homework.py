@@ -104,6 +104,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import OneHotEncoder
+from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import precision_score, balanced_accuracy_score, recall_score, f1_score, confusion_matrix
 
 METRICS_PATH = 'files/output/metrics.json'
@@ -120,22 +121,23 @@ def load_data():
     return train, test
 
 def cleaning_data(train, test):
-    # Renombrar columnas
+
+    # Renombrar la columna "default payment next month" a "default"
     train = train.rename(columns={'default payment next month': 'default'})
     test = test.rename(columns={'default payment next month': 'default'})
 
-    # Eliminar columnas
+    # Remuever la columna "ID"
     train = train.drop(columns=['ID'])
     test = test.drop(columns=['ID'])
 
-    # Eliminar registros con valores nulos
+    # Eliminar los registros con informacion no disponible
     train = train.dropna()
     test = test.dropna()
 
-    # Agrupar valores de EDUCATION
-    train.loc[train['EDUCATION'] > 4, 'EDUCATION'] = 4
-    test.loc[test['EDUCATION'] > 4, 'EDUCATION'] = 4
-    
+    # Agrupar valores de EDUCATION > 4 en la categoría "others"
+    train['EDUCATION'] = train['EDUCATION'].apply(lambda x: 4 if x > 4 else x)
+    test['EDUCATION'] = test['EDUCATION'].apply(lambda x: 4 if x > 4 else x)
+
     return train, test
 
 
@@ -160,10 +162,19 @@ def use_pipeline():
 def optimize_hyperparameters(x_train,y_train,pipeline):
     param_grid = {
         'rf__n_estimators': [10, 50, 100],
-        'rf__max_depth': [5, 10, 20]
+        'rf__max_depth': [2, 10, 20]
+        #,
+        #'rf__min_samples_split': [2, 5, 10],
+        #'rf__min_samples_leaf': [1, 2, 4],
+        #'rf__bootstrap': [True, False]
     }
 
-    grid = GridSearchCV(pipeline, param_grid, cv=10, scoring='balanced_accuracy')
+    grid = GridSearchCV(
+        pipeline, 
+        param_grid,
+        cv=10, 
+        scoring='balanced_accuracy'
+    )
     grid.fit(x_train, y_train)
     
     return grid
@@ -188,6 +199,8 @@ def write_json_file(file_path, data):
     # Ensure the directory exists
     metrics_dir = 'files/output'
     os.makedirs(metrics_dir, exist_ok=True)
+
+    print(data)
     # write to file
     with open(file_path, 'w') as file:
         # write to file
@@ -198,6 +211,7 @@ def write_json_file(file_path, data):
     print(f"Metrics saved to {METRICS_PATH}")
 
 def get_metrics(grid, x_train, y_train, x_test, y_test):
+
     dict_template = {
         'dataset': None,
         'precision': None,
@@ -210,22 +224,46 @@ def get_metrics(grid, x_train, y_train, x_test, y_test):
     test_template = dict_template.copy()
 
     # Calculate metrics
-    train_score = grid.score(x_train, y_train)
-    test_score = grid.score(x_test, y_test)
+    #train_score = grid.score(x_train, y_train)
+    #test_score = grid.score(x_test, y_test)
+
+    # Predictions
+    y_train_pred = grid.predict(x_train)
+    y_test_pred = grid.predict(x_test)
+
+    # Metrics
+    #train_report = classification_report(y_train, y_train_pred)
+    #test_report = classification_report(y_test, y_test_pred)
+
+    train_balanced_accuracy = balanced_accuracy_score(y_train, y_train_pred)
+    test_balanced_accuracy = balanced_accuracy_score(y_test, y_test_pred)
+
+    train_precision = precision_score(y_train, y_train_pred, average='weighted')
+    test_precision = precision_score(y_test, y_test_pred, average='weighted')
+
+    train_recall = recall_score(y_train, y_train_pred, average='weighted')
+    test_recall = recall_score(y_test, y_test_pred, average='weighted')
+
+    train_f1 = f1_score(y_train, y_train_pred, average='weighted')
+    test_f1 = f1_score(y_test, y_test_pred, average='weighted')
+
 
     # Fill in the template for train metrics
+    train_template = {}
     train_template['dataset'] = 'train'
-    train_template['precision'] = train_score
-    train_template['balanced_accuracy'] = balanced_accuracy_score(y_train, grid.predict(x_train))
-    train_template['recall'] = recall_score(y_train, grid.predict(x_train))
-    train_template['f1_score'] = f1_score(y_train, grid.predict(x_train))
+    train_template['precision'] = train_precision
+    train_template['balanced_accuracy'] = train_balanced_accuracy
+    train_template['recall'] = train_recall
+    train_template['f1_score'] = train_f1
 
     # Fill in the template for test metrics
+    test_template = {}
     test_template['dataset'] = 'test'
-    test_template['precision'] = test_score
-    test_template['balanced_accuracy'] = balanced_accuracy_score(y_test, grid.predict(x_test))
-    test_template['recall'] = recall_score(y_test, grid.predict(x_test))
-    test_template['f1_score'] = f1_score(y_test, grid.predict(x_test))
+    test_template['precision'] = test_precision
+    test_template['balanced_accuracy'] = test_balanced_accuracy
+    test_template['recall'] = test_recall
+    test_template['f1_score'] = test_f1
+
 
     # Add metrics to JSON file line
     # Read existing metrics if the file exists
