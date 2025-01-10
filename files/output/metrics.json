@@ -1,0 +1,26 @@
+{
+    "train_metrics": {
+        "type": "cm_matrix",
+        "dataset": "train",
+        "true_0": {
+            "predicted_0": 16273,
+            "predicted_1": 0
+        },
+        "true_1": {
+            "predicted_0": 4707,
+            "predicted_1": 20
+        }
+    },
+    "test_metrics": {
+        "type": "cm_matrix",
+        "dataset": "test",
+        "true_0": {
+            "predicted_0": 7090,
+            "predicted_1": 1
+        },
+        "true_1": {
+            "predicted_0": 1889,
+            "predicted_1": 20
+        }
+    }
+}
