@@ -106,6 +106,9 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import precision_score, balanced_accuracy_score, recall_score, f1_score, confusion_matrix
+#from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import RobustScaler
+from sklearn.compose import ColumnTransformer
 
 METRICS_PATH = 'files/output/metrics.json'
 
@@ -135,8 +138,8 @@ def cleaning_data(train, test):
     test = test.dropna()
 
     # Agrupar valores de EDUCATION > 4 en la categoría "others"
-    train['EDUCATION'] = train['EDUCATION'].apply(lambda x: 4 if x > 4 else x)
-    test['EDUCATION'] = test['EDUCATION'].apply(lambda x: 4 if x > 4 else x)
+    train['others'] = train['EDUCATION'].apply(lambda x: 1 if x > 4 else 0)
+    test['others'] = test['EDUCATION'].apply(lambda x: 1 if x > 4 else 0)
 
     return train, test
 
@@ -152,9 +155,48 @@ def split_data(train, test):
     return x_train, y_train, x_test, y_test
 
 def use_pipeline():
+
+    categorical_features = [
+        'SEX',
+        'EDUCATION',
+        'MARRIAGE',
+        'PAY_0',
+        'PAY_2',
+        'PAY_3',
+        'PAY_4',
+        'PAY_5',
+        'PAY_6'
+        ]
+    
+    numerical_features= [
+        'LIMIT_BAL',
+        'AGE',
+        'BILL_AMT1',
+        'BILL_AMT2',
+        'BILL_AMT3',
+        'BILL_AMT4',
+        'BILL_AMT5',
+        'BILL_AMT6',
+        'PAY_AMT1',
+        'PAY_AMT2',
+        'PAY_AMT3',
+        'PAY_AMT4',
+        'PAY_AMT5',
+        'PAY_AMT6'
+        ]
+    
+    # Define the column transformer
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('onehot', OneHotEncoder(handle_unknown='ignore'), categorical_features),
+            ('scaler', RobustScaler(), numerical_features)
+        ]
+    )
+
+    # Define the pipeline
     pipeline = Pipeline([
-        ('onehot', OneHotEncoder(handle_unknown='ignore')),
-        ('rf', RandomForestClassifier())
+        ('preprocessor', preprocessor),
+        ('rf', RandomForestClassifier(class_weight='balanced', random_state=42))
     ])
 
     return pipeline
@@ -162,11 +204,10 @@ def use_pipeline():
 def optimize_hyperparameters(x_train,y_train,pipeline):
     param_grid = {
         'rf__n_estimators': [10, 50, 100],
-        'rf__max_depth': [2, 10, 20]
-        #,
-        #'rf__min_samples_split': [2, 5, 10],
-        #'rf__min_samples_leaf': [1, 2, 4],
-        #'rf__bootstrap': [True, False]
+        'rf__max_depth': [2, 10, 20],
+        'rf__min_samples_split': [2, 6, 10],
+        'rf__min_samples_leaf': [1, 2, 4],
+        'rf__bootstrap': [True, False]
     }
 
     grid = GridSearchCV(
@@ -175,6 +216,7 @@ def optimize_hyperparameters(x_train,y_train,pipeline):
         cv=10, 
         scoring='balanced_accuracy'
     )
+
     grid.fit(x_train, y_train)
     
     return grid
